@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Carte des dispositifs</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+<style>
+  :root {
+    --font-body: 'Inter', 'Segoe UI', system-ui, -apple-system, Roboto, Arial, sans-serif;
+    --font-title: var(--font-body);
+  }
+  html, body { margin:0; height:100%; font-family: var(--font-body); }
+  .leaflet-container { font-family: var(--font-body); }
+  body { display:flex; flex-direction:column; }
+  #title { flex-shrink:0; padding:14px 20px; background:#fff; border-bottom:3px solid #1c3d5a; }
+  #title h1 { margin:0; font-family:var(--font-title); font-size:26px; font-weight:600; letter-spacing:-.01em; color:#1c3d5a; }
+  #bar { flex-shrink:0; display:flex; gap:8px; padding:6px; background:#f4f4f4; border-bottom:1px solid #ddd; align-items:center; flex-wrap:wrap; }
+  #bar select { padding:4px; max-width:260px; font-family:inherit; font-size:13px; }
+  #bReset { display:inline-flex; align-items:center; gap:6px; padding:4px 10px; border:1px solid #1c3d5a; border-radius:4px; background:#fff; color:#1c3d5a; font:inherit; font-size:13px; cursor:pointer; }
+  #bReset:hover { background:#1c3d5a; color:#fff; }
+  #bReset svg { width:14px; height:14px; fill:none; stroke:currentColor; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+  #count { margin-left:auto; padding:4px 14px; border-radius:16px; background:#e8eef4; color:#1c3d5a; font-size:13px; white-space:nowrap; }
+  #count:empty { display:none; }
+  #count b { font-size:18px; font-weight:700; }
+  #count small { font-size:12px; opacity:.8; }
+  #count.active { background:#1c3d5a; color:#fff; }
+  #count.zero { background:#fdecea; color:#b02a1c; }
+  #main { flex:1; min-height:0; display:flex; position:relative; }
+  #map { flex:1; min-height:0; position:relative; }
+  #panel { width:210px; flex-shrink:0; overflow:auto; box-sizing:border-box; padding:10px 12px; background:#fff; border-left:1px solid #ddd; font-size:13px; }
+  #panel h2 { margin:0 0 4px; font-family:var(--font-title); font-size:15px; font-weight:600; color:#1c3d5a; }
+  #panel .hint { margin:0 0 8px; font-size:11px; color:#666; }
+  #communeList label { display:flex; align-items:center; gap:6px; padding:3px 0; cursor:pointer; }
+  #panel button { margin-top:8px; padding:4px 8px; border:1px solid #aaa; border-radius:4px; background:#f4f4f4; cursor:pointer; font:inherit; font-size:12px; }
+  #msg { position:absolute; bottom:10px; left:10px; right:230px; z-index:1000; padding:10px 20px; background:#fee; color:#a00; border-radius:4px; }
+  @media (max-width:600px) {
+    #main { flex-direction:column; }
+    #panel { width:auto; max-height:35%; border-left:none; border-top:1px solid #ddd; }
+    #msg { right:10px; }
+  }
+  .leaflet-interactive:focus { outline: none; }
+  .leaflet-tile-pane { filter: grayscale(100%); }
+  .pin-icon { background:none; border:none; }
+  .dot { display:inline-block; width:10px; height:10px; border-radius:50%; margin-right:5px; border:1px solid rgba(0,0,0,.3); }
+  .leaflet-popup-content-wrapper { border-radius:8px; box-shadow:0 3px 14px rgba(0,0,0,.25); }
+  .leaflet-popup-content { margin:12px 14px; font:13px/1.5 var(--font-body); color:#212529; }
+  .popup-scroll { max-height:280px; overflow:auto; padding-right:6px; }
+  .popup-count { margin:0 0 10px; padding:4px 8px; border-radius:4px; background:#e8eef4; color:#1c3d5a; font-size:12px; font-weight:600; }
+  .popup-struct + .popup-struct { border-top:1px solid #dde3e9; margin-top:12px; padding-top:12px; }
+  .ps-head { display:flex; align-items:flex-start; gap:8px; margin-bottom:8px; }
+  .ps-head .dot { width:12px; height:12px; margin:4px 0 0; flex:none; }
+  .ps-name { font-family:var(--font-title); font-size:15px; font-weight:600; color:#1c3d5a; line-height:1.25; }
+  .ps-tags { display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }
+  .ps-tag { font-size:11px; padding:1px 8px; border-radius:10px; background:#eef1f4; color:#495057; }
+  .ps-info, .ps-disp { list-style:none; margin:0; padding:0; }
+  .ps-info li, .ps-disp li { display:flex; align-items:flex-start; gap:8px; padding:2px 0; }
+  .ps-info a { color:#1c3d5a; text-decoration:none; border-bottom:1px solid #b9c7d4; word-break:break-word; }
+  .ps-info a:hover { border-bottom-color:#1c3d5a; }
+  .ps-hours { white-space:pre-line; }
+  .ico { display:inline-flex; flex:none; margin-top:1px; color:#1c3d5a; }
+  .ico svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  .ps-theme { margin:10px 0 4px; font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#5b88b0; }
+  .ps-disp .ico { color:#5b88b0; }
+  #searchWrap { position:relative; display:inline-flex; align-items:center; }
+  #fSearch { width:260px; padding:4px 28px 4px 8px; border:1px solid #aaa; border-radius:4px; font:inherit; font-size:13px; }
+  #fClear { position:absolute; right:2px; border:none; background:none; font-size:18px; line-height:1; padding:0 6px; cursor:pointer; color:#666; }
+  #fClear:hover { color:#000; }
+</style>
+</head>
+<body>
+<header id="title"><h1>Simplifions le parcours des habitants</h1></header>
+<div id="bar">
+  <label>Thème <select id="fTheme"></select></label>
+  <label>Dispositif <select id="fDisp"></select></label>
+  <span id="searchWrap">
+    <input id="fSearch" type="text" placeholder="Rechercher thème, dispositif, structure…" autocomplete="off">
+    <button id="fClear" type="button" title="Effacer la recherche" aria-label="Effacer la recherche" hidden>×</button>
+  </span>
+  <button id="bReset" type="button" title="Réinitialiser les filtres, la recherche, les communes et le cadrage">
+    <svg viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>Tout réinitialiser
+  </button>
+  <span id="count"></span>
+</div>
+<div id="main">
+  <div id="map"></div>
+  <aside id="panel">
+    <h2>Communes déléguées</h2>
+    <p class="hint">Cochez votre commune pour centrer la carte sur ce territoire.</p>
+    <div id="communeList">Chargement…</div>
+    <button id="cReset" type="button">Tout décocher</button>
+  </aside>
+  <div id="msg" hidden></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://docs.getgrist.com/grist-plugin-api.js"></script>
+<script>
+const map = L.map('map').setView([47.47, -0.55], 11); // centre initial : Angers
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19, attribution: '&copy; OpenStreetMap'
+}).addTo(map);
+const layer = L.layerGroup().addTo(map);
+
+const fTheme = document.getElementById('fTheme');
+const fDisp = document.getElementById('fDisp');
+const countEl = document.getElementById('count');
+const msgEl = document.getElementById('msg');
+const fSearch = document.getElementById('fSearch');
+const fClear = document.getElementById('fClear');
+
+// ---- Noms de tables (adapter ici si besoin, insensible à la casse) ----
+const TABLE_DISPOSITIFS = 'Dispositifs';
+const TABLE_STRUCTURES  = 'STRUCTURES';
+
+// ---- Couleurs des épingles (une par structure, répétées au-delà de 20) ----
+const PALETTE = ['#e03131','#1971c2','#2f9e44','#f08c00','#9c36b5','#0c8599','#d6336c',
+  '#5c940d','#e8590c','#3b5bdb','#099268','#862e9c','#c2255c','#1864ab','#a61e4d',
+  '#66a80f','#f76707','#364fc7','#0b7285','#e67700'];
+const MULTI_COLOR = '#212529';
+let colorOf = new Map(); // id structure -> couleur
+
+// Colonne de STRUCTURES donnant le type de structure (noms testés dans l'ordre, insensible casse/accents/espaces)
+const COL_TYPE = ['TYPE STRUCTURE', 'TYPE', 'CATEGORIE', 'TYPOLOGIE'];
+const NO_TYPE_COLOR = '#868e96';
+let typeColors = new Map(); // type -> couleur
+
+const fold = s => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+const typeOf = v => Array.isArray(v) ? v.filter(x => x !== 'L').join(', ') : String(v ?? '').trim();
+
+
+let rows = [];
+let firstFit = true;
+let contoursDone = false; // contours chargés (ou échec) : permet de cadrer sur le territoire au démarrage
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const num = v => parseFloat(String(v ?? '').replace(',', '.'));
+const norm = s => String(s).toUpperCase().normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9]/g, '');
+const themesOf = v => Array.isArray(v) ? v.filter(x => x !== 'L') : (v ? [String(v)] : []);
+const toUrl = u => {
+  u = String(u || '').trim();
+  if (!u) return '';
+  if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
+  return /^https?:\/\//i.test(u) ? u : '';
+};
+const showMsg = t => { msgEl.hidden = !t; msgEl.textContent = t || ''; };
+
+// ---- Épingle SVG ----
+function pinIcon(color, label) {
+  // Épingle "bille sur tige" : sphère brillante, tige noire, ombre portée
+  const text = label
+    ? `<text x="12" y="13" text-anchor="middle" font-family="system-ui,sans-serif" font-size="10.5" font-weight="bold" fill="#fff">${esc(label)}</text>`
+    : '';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="38" viewBox="0 0 24 38">` +
+    `<defs>` +
+    `<radialGradient id="pinHi" cx=".35" cy=".3" r=".5"><stop offset="0" stop-color="#fff" stop-opacity=".95"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></radialGradient>` +
+    `<radialGradient id="pinSh" cx=".5" cy=".5" r=".5"><stop offset=".6" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".4"/></radialGradient>` +
+    `<filter id="pinBlur" x="-50%" y="-100%" width="200%" height="300%"><feGaussianBlur stdDeviation="1"/></filter>` +
+    `</defs>` +
+    `<ellipse cx="14" cy="35.5" rx="5" ry="1.5" fill="#000" opacity=".35" filter="url(#pinBlur)"/>` +
+    `<polygon points="11.2,16 12.8,16 12.4,35 11.6,35" fill="#1a1a1a"/>` +
+    `<circle cx="12" cy="9.5" r="8" fill="${color}"/>` +
+    `<circle cx="12" cy="9.5" r="8" fill="url(#pinSh)"/>` +
+    `<circle cx="12" cy="9.5" r="8" fill="url(#pinHi)"/>` +
+    text + `</svg>`;
+  return L.divIcon({
+    className: 'pin-icon',
+    html: svg,
+    iconSize: [24, 38],
+    iconAnchor: [12, 35],
+    popupAnchor: [0, -32]
+  });
+}
+
+// ---- Contours (Maine-et-Loire Data) ----
+// Si CORS bloque : remplacer par 'communes.geojson' et 'communes-deleguees.geojson'
+// (fichiers déposés à côté de index.html)
+const URL_COMMUNE = 'https://data.maine-et-loire.fr/api/explore/v2.1/catalog/datasets/224900019_communes-de-maine-et-loire/exports/geojson?lang=fr&refine=com_nom%3A%22Chemill%C3%A9-en-Anjou%22&facet=facet(name%3D%22com_nom%22%2C%20disjunctive%3Dtrue)&timezone=Europe%2FBerlin';
+const URL_DELEGUEES = 'https://data.maine-et-loire.fr/api/explore/v2.1/catalog/datasets/224900019_communes-deleguees-de-maine-et-loire/exports/geojson?lang=fr&refine=com_del_nom_nvelle%3A%22Chemill%C3%A9-en-Anjou%22&timezone=Europe%2FBerlin';
+
+// ---- Couleurs d'interface (même teinte que le titre) ----
+const COLOR_MAIN = '#1c3d5a'; // titre, contour de la commune nouvelle, commune déléguée sélectionnée
+const COLOR_SOFT = '#5b88b0'; // contours des communes déléguées
+
+const communeLayer = L.geoJSON(null, {
+  style: { color: COLOR_MAIN, weight: 3, fillOpacity: 0 },
+  interactive: false
+}).addTo(map);
+
+const communeLayers = new Map();   // nom commune déléguée -> couche polygone
+const selectedCommunes = new Set();
+
+const delegueesLayer = L.geoJSON(null, {
+  style: { color: COLOR_SOFT, weight: 1.5, dashArray: '4 3', fillColor: COLOR_SOFT, fillOpacity: 0.05 },
+  interactive: false,
+  onEachFeature: (f, l) => {
+    const n = String(f.properties.com_del_nom ?? '');
+    if (n) communeLayers.set(n, l);
+  }
+}).addTo(map);
+
+// ---- Panneau des communes déléguées ----
+function selectedBounds() {
+  const ls = [...selectedCommunes].map(n => communeLayers.get(n)).filter(Boolean);
+  return ls.length ? L.featureGroup(ls).getBounds() : null;
+}
+
+function styleCommunes() {
+  const any = selectedCommunes.size > 0;
+  communeLayers.forEach((l, n) => {
+    l.setStyle(selectedCommunes.has(n)
+      ? { color: COLOR_MAIN, fillColor: COLOR_MAIN, weight: 2.5, dashArray: null, fillOpacity: 0.15 }
+      : { color: COLOR_SOFT, fillColor: COLOR_SOFT, weight: 1.5, dashArray: '4 3', fillOpacity: any ? 0 : 0.05 });
+  });
+}
+
+function applyCommuneSelection() {
+  styleCommunes();
+  const b = selectedBounds() || communeLayer.getBounds();
+  if (b && b.isValid()) map.fitBounds(b, { padding: [30, 30], maxZoom: 15 });
+}
+
+function buildCommuneList() {
+  const box = document.getElementById('communeList');
+  box.innerHTML = '';
+  [...communeLayers.keys()].sort((a, b) => a.localeCompare(b, 'fr')).forEach(n => {
+    const lab = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.addEventListener('change', () => {
+      if (cb.checked) selectedCommunes.add(n); else selectedCommunes.delete(n);
+      applyCommuneSelection();
+    });
+    lab.append(cb, n);
+    box.appendChild(lab);
+  });
+}
+
+document.getElementById('cReset').addEventListener('click', () => {
+  selectedCommunes.clear();
+  document.querySelectorAll('#communeList input').forEach(c => { c.checked = false; });
+  applyCommuneSelection();
+});
+
+// Voile d'atténuation hors commune (au-dessus des tuiles, sous les marqueurs)
+const maskPane = map.createPane('maskPane');
+maskPane.style.zIndex = 250;
+maskPane.style.pointerEvents = 'none';
+const maskLayer = L.layerGroup().addTo(map);
+
+function buildMask(geojson) {
+  maskLayer.clearLayers();
+  const holes = [];
+  (geojson.features || []).forEach(f => {
+    const g = f.geometry;
+    if (!g) return;
+    const polys = g.type === 'Polygon' ? [g.coordinates]
+                : g.type === 'MultiPolygon' ? g.coordinates : [];
+    polys.forEach(p => holes.push(p[0].map(([lng, lat]) => [lat, lng])));
+  });
+  if (!holes.length) return;
+  const world = [[-85, -360], [-85, 360], [85, 360], [85, -360]];
+  L.polygon([world, ...holes], {
+    pane: 'maskPane', stroke: false, interactive: false,
+    fillColor: '#fff', fillOpacity: 0.7
+  }).addTo(maskLayer);
+}
+
+
+async function loadContours() {
+  try {
+    const [c, d] = await Promise.all([URL_COMMUNE, URL_DELEGUEES].map(u =>
+      fetch(u).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })));
+    communeLayer.addData(c);
+    buildMask(c);
+    delegueesLayer.addData(d);
+    buildCommuneList();
+  } catch (e) {
+    showMsg('Contours non chargés : ' + e.message);
+    document.getElementById('communeList').textContent = 'Liste indisponible';
+  } finally {
+    contoursDone = true;
+    render(true);
+  }
+}
+
+// Retrouve une colonne par nom normalisé (CODE_POSTAL = "CODE POSTAL" = CodePostal)
+function col(table, ...names) {
+  const keys = Object.keys(table);
+  for (const n of names) {
+    const k = keys.find(k => norm(k) === norm(n));
+    if (k) return table[k];
+  }
+  return null;
+}
+
+async function load() {
+  try {
+    const tables = await grist.docApi.listTables();
+    const find = n => tables.find(t => t.toLowerCase() === n.toLowerCase());
+    const tD = find(TABLE_DISPOSITIFS), tS = find(TABLE_STRUCTURES);
+    if (!tD || !tS) {
+      showMsg(`Table introuvable. Tables disponibles : ${tables.join(', ')}`);
+      return;
+    }
+    const D = await grist.docApi.fetchTable(tD);
+    const S = await grist.docApi.fetchTable(tS);
+
+    const dTheme = col(D, 'THEME');
+    const dDisp  = col(D, 'DISPOSITIF2_2', 'DISPOSITIF2'); // pas de repli sur DISPOSITIF (colonne concaténée thème + dispositif)
+    const dRef   = col(D, 'STRUCTURE');
+    if (!dTheme || !dDisp || !dRef) {
+      showMsg(`Colonnes manquantes dans ${tD}. Trouvées : ${Object.keys(D).join(', ')}`);
+      return;
+    }
+    const sCols = {
+      SIGLE: col(S, 'SIGLE'), NOM: col(S, 'NOM'), ADRESSE: col(S, 'ADRESSE'),
+      CP: col(S, 'CODE POSTAL', 'CP'), VILLE: col(S, 'VILLE'), MAIL: col(S, 'MAIL'),
+      TEL: col(S, 'TELEPHONE'), HOR: col(S, 'HORAIRES'),
+      SITE: col(S, 'SITE INTERNET', 'SITE'), LAT: col(S, 'LAT'), LONG: col(S, 'LONG'),
+      TYPE: col(S, ...COL_TYPE)
+    };
+    if (!sCols.LAT || !sCols.LONG) {
+      showMsg(`LAT/LONG introuvables dans ${tS}. Trouvées : ${Object.keys(S).join(', ')}`);
+      return;
+    }
+
+    // index id -> position dans STRUCTURES
+    const idx = new Map();
+    S.id.forEach((id, i) => idx.set(id, i));
+    const g = (c, i) => c ? c[i] : '';
+
+    rows = [];
+    D.id.forEach((_, i) => {
+      const si = idx.get(dRef[i]);
+      if (si === undefined) return; // pas de structure liée
+      const adr = [g(sCols.ADRESSE, si), [g(sCols.CP, si), g(sCols.VILLE, si)].filter(Boolean).join(' ')]
+        .filter(Boolean).join(', ');
+      rows.push({
+        sid: S.id[si],
+        THEME: dTheme[i], DISPOSITIF: dDisp[i],
+        SIGLE: g(sCols.SIGLE, si), NOM: g(sCols.NOM, si), ADRESSE: adr,
+        MAIL: g(sCols.MAIL, si), TELEPHONE: g(sCols.TEL, si),
+        HORAIRES: g(sCols.HOR, si), SITE: g(sCols.SITE, si),
+        LAT: g(sCols.LAT, si), LONG: g(sCols.LONG, si),
+        TYPE: typeOf(g(sCols.TYPE, si))
+      });
+      const last = rows[rows.length - 1];
+      last.HAY = fold([themesOf(last.THEME).join(' '), last.DISPOSITIF, last.NOM, last.SIGLE, last.TYPE].join(' '));
+    });
+
+    // Couleur stable par structure (ordre alphabétique, indépendant des filtres)
+    const uniq = new Map();
+    rows.forEach(r => uniq.set(r.sid, String(r.NOM || '')));
+    colorOf = new Map();
+    typeColors = new Map();
+    if (sCols.TYPE) {
+      // Une couleur par type de structure (ordre alphabétique, stable)
+      const types = [...new Set(rows.map(r => r.TYPE).filter(Boolean))]
+        .sort((a, b) => a.localeCompare(b, 'fr'));
+      types.forEach((t, i) => typeColors.set(t, PALETTE[i % PALETTE.length]));
+      rows.forEach(r => colorOf.set(r.sid, typeColors.get(r.TYPE) || NO_TYPE_COLOR));
+    } else {
+      // Repli : une couleur par structure
+      [...uniq.entries()]
+        .sort((a, b) => a[1].localeCompare(b[1], 'fr'))
+        .forEach(([sid], i) => colorOf.set(sid, PALETTE[i % PALETTE.length]));
+    }
+
+    showMsg(sCols.TYPE ? '' :
+      `Colonne de type introuvable dans ${tS} : couleurs par structure. Colonnes : ${Object.keys(S).join(', ')}`);
+    fillFilters();
+    render(false);
+  } catch (e) {
+    showMsg('Erreur : ' + e.message);
+  }
+}
+
+function fillSelect(sel, values, allLabel) {
+  const prev = sel.value;
+  sel.innerHTML = '';
+  const o = document.createElement('option');
+  o.value = ''; o.textContent = allLabel;
+  sel.appendChild(o);
+  [...values].sort((a, b) => a.localeCompare(b, 'fr')).forEach(v => {
+    const op = document.createElement('option');
+    op.value = v; op.textContent = v;
+    sel.appendChild(op);
+  });
+  sel.value = values.has(prev) ? prev : '';
+}
+
+function fillFilters() {
+  const themes = new Set();
+  rows.forEach(r => themesOf(r.THEME).forEach(t => themes.add(t)));
+  fillSelect(fTheme, themes, 'Tous les thèmes');
+  fillDispFilter();
+}
+
+function fillDispFilter() {
+  const t = fTheme.value;
+  const disps = new Set();
+  rows.forEach(r => {
+    if (t && !themesOf(r.THEME).includes(t)) return;
+    if (r.DISPOSITIF) disps.add(String(r.DISPOSITIF));
+  });
+  fillSelect(fDisp, disps, 'Tous les dispositifs');
+}
+
+fTheme.addEventListener('change', () => { fillDispFilter(); render(true); });
+fDisp.addEventListener('change', () => render(true));
+
+// ---- Réinitialisation complète ----
+document.getElementById('bReset').addEventListener('click', () => {
+  fTheme.value = '';
+  fillDispFilter();            // liste des dispositifs de tous les thèmes
+  fDisp.value = '';
+  fSearch.value = '';
+  fClear.hidden = true;
+  selectedCommunes.clear();
+  document.querySelectorAll('#communeList input').forEach(c => { c.checked = false; });
+  styleCommunes();
+  map.closePopup();
+  render(true);                // sans filtre : retour sur Chemillé-en-Anjou
+});
+
+// ---- Recherche libre (thème, dispositif, structure, sigle, type) ----
+let searchTimer;
+fSearch.addEventListener('input', () => {
+  fClear.hidden = !fSearch.value;
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => render(true), 200);
+});
+fSearch.addEventListener('keydown', e => { if (e.key === 'Escape') clearSearch(); });
+fClear.addEventListener('click', clearSearch);
+function clearSearch() {
+  fSearch.value = '';
+  fClear.hidden = true;
+  render(true);
+  fSearch.focus();
+}
+
+const ICON = {
+  pin:   '<svg viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11a7 7 0 0 1 14 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>',
+  phone: '<svg viewBox="0 0 24 24"><path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/></svg>',
+  mail:  '<svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>',
+  globe: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg>',
+  clock: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+  check: '<svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'
+};
+const infoRow = (icon, inner) => `<li><span class="ico">${ICON[icon]}</span><span>${inner}</span></li>`;
+
+function structHtml(s) {
+  const r = s.r;
+  const c = colorOf.get(r.sid) || MULTI_COLOR;
+  const tags = [r.SIGLE, r.TYPE].filter(Boolean).map(x => `<span class="ps-tag">${esc(x)}</span>`).join('');
+  let html = `<div class="popup-struct"><div class="ps-head"><span class="dot" style="background:${c}"></span>` +
+    `<div><div class="ps-name">${esc(r.NOM)}</div>${tags ? `<div class="ps-tags">${tags}</div>` : ''}</div></div>`;
+
+  let info = '';
+  if (r.ADRESSE) info += infoRow('pin', esc(r.ADRESSE));
+  if (r.TELEPHONE) {
+    const digits = String(r.TELEPHONE).replace(/[^\d+]/g, '');
+    // lien d'appel seulement s'il s'agit d'un seul numéro
+    info += infoRow('phone', digits.length >= 10 && digits.length <= 12
+      ? `<a href="tel:${esc(digits)}">${esc(r.TELEPHONE)}</a>` : esc(r.TELEPHONE));
+  }
+  if (r.MAIL) info += infoRow('mail', `<a href="mailto:${esc(r.MAIL)}">${esc(r.MAIL)}</a>`);
+  const site = toUrl(r.SITE);
+  if (site) info += infoRow('globe', `<a href="${esc(site)}" target="_blank" rel="noopener">Site internet</a>`);
+  if (r.HORAIRES) info += infoRow('clock', `<span class="ps-hours">${esc(r.HORAIRES)}</span>`);
+  if (info) html += `<ul class="ps-info">${info}</ul>`;
+
+  Object.entries(s.byTheme).forEach(([k, set]) => {
+    html += `<div class="ps-theme">${esc(k)}</div><ul class="ps-disp">` +
+      [...set].map(x => `<li><span class="ico">${ICON.check}</span><span>${esc(x)}</span></li>`).join('') + '</ul>';
+  });
+  return html + '</div>';
+}
+
+function render(fit) {
+  layer.clearLayers();
+  const t = fTheme.value, d = fDisp.value;
+  const tokens = fold(fSearch.value).split(/\s+/).filter(Boolean);
+  const groups = new Map(); // clé de coordonnées -> { lat, lng, structs: Map(sid -> {r, byTheme}) }
+
+  rows.forEach(r => {
+    const lat = num(r.LAT), lng = num(r.LONG);
+    if (!isFinite(lat) || !isFinite(lng) || (lat === 0 && lng === 0)) return;
+    const th = themesOf(r.THEME);
+    if (t && !th.includes(t)) return;
+    if (d && String(r.DISPOSITIF) !== d) return;
+    if (tokens.length && !tokens.every(k => r.HAY.includes(k))) return;
+
+    const key = lat.toFixed(4) + '|' + lng.toFixed(4); // ~11 m
+    if (!groups.has(key)) groups.set(key, { lat, lng, structs: new Map() });
+    const grp = groups.get(key);
+    if (!grp.structs.has(r.sid)) grp.structs.set(r.sid, { r, byTheme: {} });
+    const s = grp.structs.get(r.sid);
+    const k = th.join(', ') || 'Sans thème';
+    (s.byTheme[k] = s.byTheme[k] || new Set()).add(r.DISPOSITIF ? String(r.DISPOSITIF) : '(sans nom)');
+  });
+
+  const pts = [];
+  let nbStruct = 0;
+  groups.forEach(grp => {
+    const n = grp.structs.size;
+    nbStruct += n;
+
+    let html = '<div class="popup"><div class="popup-scroll">';
+    if (n > 1) html += `<div class="popup-count">${n} structures à cet emplacement</div>`;
+    grp.structs.forEach(s => { html += structHtml(s); });
+    html += '</div></div>';
+
+    const icon = n > 1
+      ? pinIcon(MULTI_COLOR, n)
+      : pinIcon(colorOf.get([...grp.structs.keys()][0]) || MULTI_COLOR);
+
+    L.marker([grp.lat, grp.lng], { icon }).bindPopup(html, { maxWidth: 340 }).addTo(layer);
+    pts.push([grp.lat, grp.lng]);
+  });
+
+  // Compteur de résultats : mis en avant quand un filtre ou une recherche est actif
+  const isFiltering = !!(t || d || tokens.length);
+  const pl = (n, w) => n + ' ' + w + (n > 1 ? 's' : '');
+  countEl.className = nbStruct === 0 ? 'zero' : (isFiltering ? 'active' : '');
+  countEl.innerHTML = nbStruct === 0
+    ? '<b>Aucun résultat</b>'
+    : `<b>${nbStruct}</b> structure${nbStruct > 1 ? 's' : ''} <small>· ${pl(pts.length, 'emplacement')}</small>`;
+  if (fit || firstFit) {
+    const filtering = !!(t || d || tokens.length);
+    const terr = selectedBounds() || communeLayer.getBounds(); // communes cochées, sinon Chemillé-en-Anjou
+    const hasTerr = terr && terr.isValid();
+    if (filtering && pts.length) {
+      // filtre ou recherche actif : on cadre tous les points trouvés
+      // + les communes cochées, pour qu'elles restent visibles
+      const b = L.latLngBounds(pts);
+      const sb = selectedBounds();
+      if (sb) b.extend(sb);
+      map.fitBounds(b, { padding: [30, 30], maxZoom: 15 });
+      firstFit = false;
+    } else if (!filtering && hasTerr) {
+      // aucun filtre : on cadre le territoire (communes cochées, ou commune nouvelle)
+      map.fitBounds(terr, { padding: [30, 30], maxZoom: 15 });
+      firstFit = false;
+    } else if (!filtering && pts.length && contoursDone) {
+      // repli si les contours n'ont pas pu être chargés
+      map.fitBounds(pts, { padding: [30, 30], maxZoom: 15 });
+      firstFit = false;
+    }
+  }
+}
+
+grist.ready({ requiredAccess: 'full' });
+
+// Recharge à chaque modification de la table liée (anti-rebond)
+let timer;
+grist.onRecords(() => { clearTimeout(timer); timer = setTimeout(load, 300); });
+load();
+loadContours();
+</script>
+</body>
+</html>
